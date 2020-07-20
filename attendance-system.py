@@ -3,35 +3,28 @@ import csv
 from firebase import firebase
 from datetime import datetime
 import PySimpleGUI as sg
+######################################
 
 
+
+
+######################################
 day = ""
 date = ""
 salary = 0
+SrNo = 0
+k=0
+generation_started = False
 # Retrive data form Firebase
 firebase = firebase.FirebaseApplication(
     "https://citapp-65efb.firebaseio.com", None)
 ######################################## 
 
-p = '2020-07-15'
 ##########################################
 
 sg.theme('DarkAmber')
 sg.set_options(element_size=200)
-layout = [[sg.Text("Please type day")],
-          [sg.InputText(key='day',
-          enable_events=True,
-          justification='center',
-          size=(30,1))],
-
-          [sg.Text("Please type salary")], 
-          [sg.InputText(key='salary',
-          enable_events=True,
-          justification='center',
-          size=(30,1))],
-
-
-          [sg.Text("Please type date")],
+layout = [[sg.Text("Please type date")],
           [sg.InputText(key='date',
           enable_events=True,
           justification='center',
@@ -40,7 +33,13 @@ layout = [[sg.Text("Please type day")],
                                             target='date',
                                             location=(0,0),
                                             no_titlebar=False,
-                                            format='%y-%m-%d',)],
+                                            format='%Y-%m-%d',)],
+          [sg.Text("Please type salary")], 
+          [sg.InputText(key='salary',
+          enable_events=True,
+          justification='center',
+          size=(30,1))],
+
 
 
           [sg.Button(button_text='Generate'), sg.Button('Display Report')],
@@ -82,7 +81,7 @@ def overtimeSalary(twh):
     ott = int(overtime * 60 * 60)
     ovt = convert(ott)
     if overtime > 0:
-        total_sal = overtime*float(sal)
+        total_sal = overtime*float(salary)
         #print("                OverTime = ",ovt)
         #print("        Extratime salary = ",total_sal)
     else:
@@ -93,7 +92,7 @@ def overtimeSalary(twh):
 
 ##########################################
 
-def calculations(date, mylist, tlist, namee, sal):
+def calculations(date, mylist, tlist, namee, sal,k):
 
     duplicates = []
     st = 'Present'
@@ -128,26 +127,122 @@ def calculations(date, mylist, tlist, namee, sal):
             print("       Total Woking time = ", twh)
             OT, OTS = overtimeSalary(twh)
             print(" ", sep='\n')
-    cre(namee, st, t1, t2, twh, OT, OTS)
+    cre(k,namee, st, t1, t2, twh, OT, OTS)
 
 
 ##########################################
-def cre(namee, st, t1, t2, twh, OT, OTS):
+def cre(k,namee, st, t1, t2, twh, OT, OTS):
+    
 
-    filename = p + '.csv'
-    if not os.path.exists(filename):
-        append_write = 'a'  # append if already exists
-    else:
-        append_write = 'w+'
+    filename = 'Data' + '.csv'
 
     with open(filename, 'a+') as f:
-        f.writelines(f'\n{namee},{st},{t1},{t2},{twh},{OT},{OTS},{p}')
+        writer= csv.writer(f)
+        writer.writerow([
+            k,namee,st,date,t1,t2,twh,OT,OTS])
+        #f.writelines(f'\n{k},{namee},{st},{t1},{t2},{twh},{OT},{OTS}')
 
 
 ########################################
+def Creat1():
+    Sr= 'Sr.No'     
+    name = 'Employee Name'
+    Status = 'Attendance Status'
+    Da = 'Date'
+    Ti = 'Time In'
+    to = 'Time Out'
+    wh = 'Working Hours'
+    Ot= 'Over Time'
+    ots = 'OverTime Salary'
+    filename = 'Data'+'.csv'
+    #if not os.path.exists(filename):
+    with open(filename,'w+') as f:
+        writer= csv.writer(f)
+        writer.writerow([
+            Sr,name,Status,Da,Ti,to,wh,Ot,ots])
+
+
+        
+#########################################
 
 def generateDateReport():
+    missing = []
+    UIP = []  # Unique ID in profile_user
+    GnName = []
+    tlist = [None]
+
+    timelst=[]
+    duplicates=[]
+    tlist = []
+    dlist=[]
+    Pro_names=[]
+    Emp_names=[]
+    absent=[]
+    FMT = '%H:%M:%S'
+    ymd = '%Y-%m-%d'
+
+    n = 0
+    Sr= 1
+    global k
     print("date's report being generated")
+    r2 = firebase.get('/user_profiles', '')
+    print('Please wait.....', end="\n")
+    if(len(r2) > 0):
+        generation_started = True
+
+    if(generation_started == True):
+        layout = [[sg.Text('File fetching in progress')],
+                  [sg.ProgressBar(max_value = len(r2),orientation='h',size=(20,20), key='progress')],
+                    ]
+        progressWindow = sg.Window('Progress meter', layout, finalize=True)
+        progress_bar = progressWindow['progress']
+
+    for z in r2.values():
+        GnName.append(z['name'])
+    for aa in r2:
+        UIP.clear()
+        UIP.append(aa)
+        for x in UIP:
+            r = firebase.get('/Employee Data/' + UIP[n], '')
+            mylist = []
+        if r is None:
+            missing.append(GnName[k])
+            st = 'Missing Record'
+            namee = GnName[k]
+            t1, t2, twh, OT, OTS = 'None', 'None', 'None', 'None', 'None'
+            cre(Sr,namee, st, t1, t2, twh, OT, OTS)
+        else:
+            dlist.clear()
+            tlist.clear()
+            for a in r.values():
+                mylist.append(a["dateTime"])
+            for dt in mylist:
+                dt1 = datetime.strptime(dt, '%Y-%m-%d, %H:%M:%S')
+                tlist.append(dt1.strftime(FMT))
+                dlist.append(dt1.strftime(ymd))
+
+            print("        Employee Name :", GnName[k])
+            print(" ", sep='\n')
+            datee = list_duplicates(dlist, date)
+            if datee is not None:
+                calculations(datee, dlist, tlist, GnName[k], salary,Sr)
+
+            else:
+                print('absent')
+                st = 'Absent'
+                namee = GnName[k]
+                t1, t2, twh, OT, OTS = 'None', 'None', 'None', 'None', 'None'
+                cre(Sr,namee, st, t1, t2, twh, OT, OTS)
+
+        #n=n+1
+        k = k+1
+        Sr= Sr+1
+        progress_bar.update_bar(k)
+    print('.........Report Generated.......')
+    generation_started = False
+    progressWindow.close()
+        
+
 
 
 def generateTodaysReport():
@@ -163,21 +258,17 @@ def show_table():
     #open the csv file 
     #seperate header and data
     #print it
-    filename = 'D:/Desktop/attendance-gui-test/data.csv'
+    filename = 'H:/Data.csv'
     if filename == '':
         return
     data = []
     header_list = []
-    button = sg.popup_yes_no('Does this file have column names already?')
     if filename is not None:
         with open(filename, "r", newline='',encoding='utf-8') as infile:
             reader = csv.reader(infile)
-            if button == 'Yes':
-                header_list = next(reader)
+            header_list = next(reader)
             try:
-                data = list(reader)  # read everything else into a list of rows
-                if button == 'No':   #manual heading creation
-                    header_list = ['Name', 'Start Time', 'End Time','Name', 'Start Time', 'End Time','Name', 'Start Time', 'End Time']
+                data = list(reader)  # read everything else into a list of rowsheader_list = ['Sr. No', 'Employee Name', 'Attendance Status', 'Date','Time In', 'Time Out', 'Working Hours','Over Time', 'OverTime Salary']
             except:
                 sg.popup_error('Error reading file')
                 return
@@ -202,7 +293,12 @@ def show_table():
 
     window.close()
 
-def GenerateReport(day, salary, date):
+def GenerateReport(salary, date):
+
+
+    Creat1()
+
+
     n = 0
     timelst = []
     duplicates = []
@@ -217,12 +313,7 @@ def GenerateReport(day, salary, date):
     isDate = False
     isToday = False
 
-    missing = []
-    UIP = []  # Unique ID in profile_user
-    GnName = []
-    tlist = [None]
-    n = 0
-    k = 0
+
 
     # value check
     if len(day) > 0:
@@ -248,57 +339,10 @@ def GenerateReport(day, salary, date):
     elif(isDate == True and isValid == True):
         generateDateReport()
 
-    return
-    r2 = firebase.get('/user_profiles', '')
-    print('Please wait.....', end="\n")
-
-    for z in r2.values():
-        GnName.append(z['name'])
-    for aa in r2:
-        UIP.clear()
-        UIP.append(aa)
-        for x in UIP:
-            r = firebase.get('/Employee Data/' + UIP[n], '')
-            mylist = []
-        if r is None:
-            missing.append(GnName[k])
-            st = 'Missing Record'
-            namee = GnName[k]
-            t1, t2, twh, OT, OTS = 'None', 'None', 'None', 'None', 'None'
-            cre(namee, st, t1, t2, twh, OT, OTS)
-        else:
-            dlist.clear()
-            tlist.clear()
-            for a in r.values():
-                mylist.append(a["dateTime"])
-            for dt in mylist:
-                dt1 = datetime.strptime(dt, '%Y-%m-%d, %H:%M:%S')
-                tlist.append(dt1.strftime(FMT))
-                dlist.append(dt1.strftime(ymd))
-
-            print("        Employee Name :", GnName[k])
-            print(" ", sep='\n')
-            date = list_duplicates(dlist, p)
-            if date is not None:
-                calculations(date, dlist, tlist, GnName[k], sal)
-
-            else:
-                print('absent')
-                st = 'Absent'
-                namee = GnName[k]
-                t1, t2, twh, OT, OTS = 'None', 'None', 'None', 'None', 'None'
-                cre(namee, st, t1, t2, twh, OT, OTS)
-
-        # n=n+1
-        k = k+1
+    
+    
 
 
-'''       
-p='2020-07-13'
-
-sal=120
-GenerateReport()
-'''
 
 while True:
     event, values = window.read()
@@ -308,19 +352,18 @@ while True:
         print("program exitting")
         break
     if event == 'Generate':
-        day = str(values['day'])
         salary = str(values['salary'])
         date = str(values['date'])
-        print('you entered day', day, 'you typed salary',
-        salary, 'you type date', date)
-        GenerateReport(day, salary, date)
+        print('you typed salary',salary, 'you type date', date)
+        GenerateReport(salary, date)
 
         
     if event == 'Display Report':
         #the excel data display code goes in here
         show_table()
         print("Printing excel data")
-    
+    if generation_started == True:
+        print("generation started")
 
 
 
