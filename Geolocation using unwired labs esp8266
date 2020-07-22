@@ -1,48 +1,115 @@
+/*
+ * Blink
+ * Turns on an LED on for one second,
+ * then off for one second, repeatedly.
+ */
+
+#include "Arduino.h"
+#include <SoftwareSerial.h>
+#include <ESP8266WiFi.h>
+#include <FirebaseArduino.h>
+#include <ArduinoJson.h>
 #include <ESP8266HTTPClient.h>
+// Set these to run example.
+#define FIREBASE_HOST "soil-agriculture-iot.firebaseio.com"
+#define FIREBASE_AUTH "yfWcnVTrxz5uPjx4arkx1auBxiEa2vL6yapPHJa0"
+#define WIFI_SSID "Shoaib"
+#define WIFI_PASSWORD "A0123456789"
 
-#include  <ArduinoJson.h>
-
-#include "ESP8266WiFi.h"
-
-// your network SSID (name) & network password
-char myssid[] = "Shoaib";
-char mypass[] = "A0123456789";
-
-// unwiredlabs Hostname & Geolocation Endpoint url
-const char* Host = "www.unwiredlabs.com";
+//geolocation setttings
+const char *Host = "www.unwiredlabs.com";
 String endpoint = "/v2/process.php";
-
-// UnwiredLabs API_Token. Signup here to get a free token https://unwiredlabs.com/trial
 String token = "ddc5188ac56a2c";
-
 String jsonString = "{\n";
-
-// Variables to store unwiredlabs response
 double latitude = 0.0;
 double longitude = 0.0;
 double accuracy = 0.0;
+int balance;
+//----
+String data = "";
+SoftwareSerial Ser;
+String ph, gas, moisture, humidity;
+float n = 0.0;
+bool valid = false;
 
-void setup(){
-    Serial.begin(115200);
-
-    // Set WiFi to station mode and disconnect from an AP if it was previously connected
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    Serial.println("Setup done");
-
-    // We start by connecting to a WiFi network
-    Serial.print("Connecting to ");
-    Serial.println(myssid);
-    WiFi.begin(myssid, mypass);
-
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println(".");
+void decode(String c)
+{
+  ph = c.substring(0, c.indexOf(','));
+  moisture = c.substring(c.indexOf(',') + 1, c.indexOf('!'));
+  humidity = c.substring(c.indexOf('!') + 1, c.indexOf('@'));
+  gas = c.substring(c.indexOf('@') + 1, c.indexOf('?'));
 }
 
-void loop() {
+void updateFirebase()
+{
+  //updating the history for charts
+
+  Firebase.pushFloat("History/gas", gas.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update history");
+    delay(500);
+    return;
+  }
+  Firebase.pushFloat("History/moisture", moisture.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update history");
+    delay(500);
+    return;
+  }
+  Firebase.pushFloat("History/ph", ph.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update history");
+    delay(500);
+    return;
+  }
+  Firebase.pushFloat("History/humidity", humidity.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update history");
+    delay(500);
+    return;
+  }
+
+  //updating individual live values for main screen
+  Firebase.setFloat("firebaseIOT/gas", gas.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update live data");
+    delay(500);
+    return;
+  }
+  Firebase.setFloat("firebaseIOT/moisture", moisture.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update live data");
+    delay(500);
+    return;
+  }
+  Firebase.setFloat("firebaseIOT/ph", ph.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update live data");
+    delay(500);
+    return;
+  }
+  Firebase.setFloat("firebaseIOT/humidity", humidity.toFloat());
+  if (Firebase.failed())
+  {
+    Serial.println("Failed to update live data");
+    delay(500);
+    return;
+  }
+  //update the live data feed firebaseIOT by setting
+  //update the history by pushing data
+}
+
+void fetchCoordinates1()
+{
+  while (true)
+  {
     char bssid[6];
     DynamicJsonBuffer jsonBuffer;
 
@@ -50,79 +117,160 @@ void loop() {
     int n = WiFi.scanNetworks();
     Serial.println("scan done");
 
-    if (n == 0 ) {
-        Serial.println("No networks available");
-    } else {
-        Serial.print(n);
-        Serial.println(" networks found");
+    if (n == 0)
+    {
+      Serial.println("No networks available");
+    }
+    else
+    {
+      Serial.print(n);
+      Serial.println(" networks found");
     }
 
-      // now build the jsonString...
-      jsonString = "{\n";
-      jsonString += "\"token\" : \"";
-      jsonString += token;
+    // now build the jsonString...
+    jsonString = "{\n";
+    jsonString += "\"token\" : \"";
+    jsonString += token;
+    jsonString += "\",\n";
+    jsonString += "\"id\" : \"saikirandevice01\",\n";
+    jsonString += "\"wifi\": [\n";
+    for (int j = 0; j < n; ++j)
+    {
+      jsonString += "{\n";
+      jsonString += "\"bssid\" : \"";
+      jsonString += (WiFi.BSSIDstr(j));
       jsonString += "\",\n";
-      jsonString += "\"id\" : \"saikirandevice01\",\n";
-      jsonString += "\"wifi\": [\n";
-      for (int j = 0; j < n; ++j) {
-          jsonString += "{\n";
-          jsonString += "\"bssid\" : \"";
-          jsonString += (WiFi.BSSIDstr(j));
-          jsonString += "\",\n";
-          jsonString += "\"signal\": ";
-          jsonString += WiFi.RSSI(j);
-          jsonString += "\n";
-          if (j < n - 1) {
-              jsonString += "},\n";
-          } else {
-              jsonString += "}\n";
-          }
+      jsonString += "\"signal\": ";
+      jsonString += WiFi.RSSI(j);
+      jsonString += "\n";
+      if (j < n - 1)
+      {
+        jsonString += "},\n";
       }
-      jsonString += ("]\n");
-      jsonString += ("}\n");
-      Serial.println(jsonString);
-
-      WiFiClientSecure client;
-      client.setInsecure();
-
-      //Connect to the client and make the api call
-      Serial.println("Requesting URL: https://" + (String)Host + endpoint);
-      if (client.connect(Host, 443)) {
-          Serial.println("Connected");
-          client.println("POST " + endpoint + " HTTP/1.1");
-          client.println("Host: " + (String)Host);
-          client.println("Connection: close");
-          client.println("Content-Type: application/json");
-          client.println("User-Agent: Arduino/1.0");
-          client.print("Content-Length: ");
-          client.println(jsonString.length());
-          client.println();
-          client.print(jsonString);
-          delay(500);
+      else
+      {
+        jsonString += "}\n";
       }
+    }
+    jsonString += ("]\n");
+    jsonString += ("}\n");
+    Serial.println(jsonString);
 
-      //Read and parse all the lines of the reply from server
-      while (client.available()) {
-          String line = client.readStringUntil('\r');
-          JsonObject& root = jsonBuffer.parseObject(line);
-          if (root.success()) {
-              latitude    = root["lat"];
-              longitude   = root["lon"];
-              accuracy    = root["accuracy"];
+    WiFiClientSecure client;
+    client.setInsecure();
 
-              Serial.println();
-              Serial.print("Latitude = ");
-              Serial.println(latitude, 6);
-              Serial.print("Longitude = ");
-              Serial.println(longitude, 6);
-              Serial.print("Accuracy = ");
-              Serial.println(accuracy);
-          }
+    //Connect to the client and make the api call
+    Serial.println("Requesting URL: https://" + (String)Host + endpoint);
+    if (client.connect(Host, 443))
+    {
+      Serial.println("Connected");
+      client.println("POST " + endpoint + " HTTP/1.1");
+      client.println("Host: " + (String)Host);
+      client.println("Connection: close");
+      client.println("Content-Type: application/json");
+      client.println("User-Agent: Arduino/1.0");
+      client.print("Content-Length: ");
+      client.println(jsonString.length());
+      client.println();
+      client.print(jsonString);
+      delay(500);
+    }
+
+    //Read and parse all the lines of the reply from server
+    while (client.available())
+    {
+      String line = client.readStringUntil('\r');
+      JsonObject &root = jsonBuffer.parseObject(line);
+      if (root.success())
+      {
+        latitude = root["lat"];
+        longitude = root["lon"];
+        accuracy = root["accuracy"];
+        balance = root["balance"];
+
+        Serial.println();
+        Serial.print("Latitude = ");
+        Serial.println(latitude, 6);
+        Serial.print("Longitude = ");
+        Serial.println(longitude, 6);
+        Serial.print("Accuracy = ");
+        Serial.println(accuracy);
       }
+    }
 
-      Serial.println("closing connection");
-      Serial.println();
-      client.stop();
-
-      
+    Serial.println("closing connection");
+    Serial.println();
+    client.stop();
+    if (latitude > 0.0)
+    {
+      Serial.println("Coordinates fetched successfully");
+      Serial.println("Number of requests left: ");
+      Serial.println(balance);
+      break;
+    }
+    if (balance > 1)
+    {
+      Serial.println("Coordinates not valid, retrying...");
+      delay(5000);
+    }
+    else
+    {
+      Serial.println("Number of request used up. use another method.");
+      break;
+    }
+  }
 }
+
+void fetchCoordinates2()   //uses google api method. 
+{
+
+}
+
+void setup()
+{
+  // initialize LED digital pin as an output.
+  pinMode(LED_BUILTIN, OUTPUT);
+  Ser.begin(9600, SWSERIAL_8N1, D5);
+  Serial.begin(115200);
+  digitalWrite(LED_BUILTIN, HIGH);
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  Serial.println("Setup done");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to ");
+  Serial.println(WIFI_SSID);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println();
+  Serial.print("connected: ");
+  Serial.println(WiFi.localIP());
+
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+  Serial.println("Connected to firebase");
+  fetchCoordinates1();
+  if (balance <= 1)
+  {
+    fetchCoordinates2(); //use another method to fetch location
+  }
+}
+
+void loop()
+{
+  delay(1000);
+  if (Ser.available() > 0)
+  {
+    String c = String(Ser.readStringUntil('?'));
+    decode(c);
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    Serial.println(c);
+  }
+  Ser.flush();
+  updateFirebase();
+}
+
+/*
+1- Requests limit of unwired is 100 and so have to find multiple ways to get location. 
+*/
